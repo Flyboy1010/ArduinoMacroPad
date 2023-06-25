@@ -1,0 +1,9 @@
+x64/
+.vs/
+assets/
+Arduino.vcxproj
+Arduino.sln
+Arduino.vcxproj.filters
+Arduino.vcxproj.user
+config.json
+imgui.ini
