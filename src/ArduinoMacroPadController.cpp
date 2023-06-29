@@ -13,9 +13,34 @@ static const std::string g_actionTypeStr = "action_type";
 static const std::string g_keysStr = "keys";
 static const std::string g_processPathStr = "process_path";
 
+static std::unordered_map<ActionType, std::string> g_actionTypeToStringMap = {
+    { ActionType::NONE        , "none"         },
+    { ActionType::KEY_MACRO   , "key_macro"    },
+    { ActionType::OPEN_PROCESS, "open_process" }
+};
+
+static std::unordered_map<std::string, ActionType> g_stringToActionTypeMap = {
+    { "none"     ,    ActionType::NONE         },
+    { "key_macro",    ActionType::KEY_MACRO    },
+    { "open_process", ActionType::OPEN_PROCESS }
+};
+
+static bool CheckLua(lua_State* l, int r)
+{
+    if (r != LUA_OK)
+    {
+        std::string errorString = lua_tostring(l, -1);
+        std::cout << errorString << std::endl;
+
+        return false;
+    }
+
+    return true;
+}
+
 static void SerializeAction(const std::string& commandName, const Action& action, json& jsonConfigFile)
 {
-    jsonConfigFile[commandName][g_actionTypeStr] = action.type;
+    jsonConfigFile[commandName][g_actionTypeStr] = g_actionTypeToStringMap[action.type];
     
     switch (action.type)
     {
@@ -31,7 +56,7 @@ static void SerializeAction(const std::string& commandName, const Action& action
 static Action DeserializeAction(const std::string& commandName, const json& jsonConfigFile)
 {
     Action action;
-    action.type = jsonConfigFile[commandName][g_actionTypeStr];
+    action.type = g_stringToActionTypeMap[jsonConfigFile[commandName][g_actionTypeStr]];
 
     switch (action.type)
     {
@@ -69,9 +94,11 @@ static void OpenProcess(const std::string& path)
     delete[] pathCStr;
 
     // Check the result
+
     if (result)
     {
         // Close process and thread handles
+        
         CloseHandle(pi.hProcess);
         CloseHandle(pi.hThread);
 
@@ -117,7 +144,7 @@ static void PerformAction(const Action& action)
 
         // send the input
 
-        UINT uSent = SendInput(numKeys * 2, inputs, sizeof(INPUT));
+        SendInput(numKeys * 2, inputs, sizeof(INPUT));
         
         // clean
 
@@ -135,6 +162,15 @@ static void PerformAction(const Action& action)
 ArduinoMacroPadController::ArduinoMacroPadController()
     : m_port(m_io), m_baudios(9600)
 {
+    // init leds color to be purple
+
+    for (int i = 0; i < 441; i++)
+    {
+        m_ledsData[i] = { 175, 45, 246 };
+    }
+
+    m_time = 0.0f;
+
     /* Define commands */
 
     // increment volume action
@@ -181,7 +217,7 @@ ArduinoMacroPadController::ArduinoMacroPadController()
 
     // each key of the macro pad
 
-    for (int i = 0; i < 9; i++)
+    for (int i = 0; i < 441; i++)
     {
         Action keyAction;
         keyAction.type = ActionType::OPEN_PROCESS;
@@ -191,17 +227,43 @@ ArduinoMacroPadController::ArduinoMacroPadController()
 
     Action keyAction;
     keyAction.type = ActionType::KEY_MACRO;
-    keyAction.keys = { (int)'H', (int)'O', (int)'L', (int)'A' }; // screenshot
+    keyAction.keys = { VK_LWIN, VK_SHIFT, (int)'S'}; // screenshot
     m_commandsMap["KEY" + std::to_string(5)] = keyAction;
 
     // SerializeConfig("config.json");
 
     // DeserializeConfig("config.json");
+
+    /* LUA TESTING */
+
+    // Step 1: Set up the Lua environment
+
+    m_script = luaL_newstate();
+    luaL_openlibs(m_script);
+
+    // Step 2: Load and execute the Lua script
+
+    if (CheckLua(m_script, luaL_dofile(m_script, "assets/scripts/rainbow.lua"))) // if it fails do smth
+    {
+
+    }
+
+    // Step 3: Expose this instance and functions to Lua
+
+    lua_pushlightuserdata(m_script, this);
+    lua_pushcclosure(m_script, SetLedColorLuaWrap, 1);
+    lua_setglobal(m_script, "set_led");
+
+    lua_pushlightuserdata(m_script, this);
+    lua_pushcclosure(m_script, GetLedColorLuaWrap, 1);
+    lua_setglobal(m_script, "get_led");
 }
 
 ArduinoMacroPadController::~ArduinoMacroPadController()
 {
     Disconnect();
+
+    lua_close(m_script);
 }
 
 void ArduinoMacroPadController::ConnectToPort(const std::string& portName, unsigned int baudios)
@@ -307,41 +369,128 @@ void ArduinoMacroPadController::CommandListenerProcess()
     }
 }
 
-void ArduinoMacroPadController::RenderImGui()
+int ArduinoMacroPadController::SetLedColorLuaWrap(lua_State* l)
 {
-    return;
-    static bool use_work_area = true;
-    static ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings;
+    ArduinoMacroPadController* macroPadController = (ArduinoMacroPadController*)lua_touserdata(l, lua_upvalueindex(1));
+    int index = lua_tointeger(l, 1);
+    uint8_t r = lua_tointeger(l, 2);
+    uint8_t g = lua_tointeger(l, 3);
+    uint8_t b = lua_tointeger(l, 4);
+    macroPadController->SetLedColor(index, { r, g, b });
+    return 0;
+}
 
-    // We demonstrate using the full viewport area or the work area (without menu-bars, task-bars etc.)
-    // Based on your use case you may want one of the other.
-    const ImGuiViewport* viewport = ImGui::GetMainViewport();
-    ImGui::SetNextWindowPos(use_work_area ? viewport->WorkPos : viewport->Pos);
-    ImGui::SetNextWindowSize(use_work_area ? viewport->WorkSize : viewport->Size);
+int ArduinoMacroPadController::GetLedColorLuaWrap(lua_State* l)
+{
+    ArduinoMacroPadController* macroPadController = (ArduinoMacroPadController*)lua_touserdata(l, lua_upvalueindex(1));
+    int index = lua_tointeger(l, 1);
+    led_t ledColor = macroPadController->GetLedColor(index);
+    lua_pushinteger(l, ledColor.r);
+    lua_pushinteger(l, ledColor.g);
+    lua_pushinteger(l, ledColor.b);
+    return 3;
+}
 
-    if (ImGui::Begin("ArduinoMacroPad", nullptr, flags))
+void ArduinoMacroPadController::Update(float delta)
+{
+    // TODO: modify led color by lua script (execute update_leds function)
+
+    lua_getglobal(m_script, "update_leds");
+
+    if (lua_isfunction(m_script, -1))
     {
-        ImVec2 buttonSize(200, 200);
+        lua_pushnumber(m_script, m_time);
 
-        // Loop for each row
-        for (int row = 0; row < 3; row++)
+        if (CheckLua(m_script, lua_pcall(m_script, 1, 0, 0)))
         {
-            ImGui::Columns(3, nullptr, false);
 
-            // Loop for each column
-            for (int col = 0; col < 3; col++)
-            {
-                // Create a button
-                if (ImGui::Button("Button", buttonSize))
-                {
-                    // Button clicked
-                    // Add your button click logic here
-                }
-            }
-            ImGui::NextColumn();
-
-            ImGui::Columns(1);
         }
     }
+
+    // write the led data to the arduino (if it is connected)
+
+    if (m_port.is_open())
+    {
+        asio::write(m_port, asio::buffer("LEDSDATA\n"));
+        asio::write(m_port, asio::buffer(m_ledsData, 441 * 3));
+    }
+
+    // increment time
+
+    m_time += delta;
+}
+
+void ArduinoMacroPadController::RenderImGui()
+{
+    /* LED TESTING BUTTONS */
+
+    ImGui::Begin("Leds Colors");
+
+    static float ledDataNormalized[441 * 3];
+
+    for (int i = 0; i < 441; i++)
+    {
+        ledDataNormalized[i * 3 + 0] = m_ledsData[i].r / 255.0f;
+        ledDataNormalized[i * 3 + 1] = m_ledsData[i].g / 255.0f;
+        ledDataNormalized[i * 3 + 2] = m_ledsData[i].b / 255.0f;
+    }
+
+    for (int j = 0; j < 21; j++)
+    {
+        ImGui::NewLine();
+        for (int i = 0; i < 21; i++)
+        {
+            int index = i + j * 21;
+            ImGui::SameLine();
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(ledDataNormalized[index * 3], ledDataNormalized[index * 3 + 1], ledDataNormalized[index * 3 + 2], 1.0f));
+            ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
+            ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 2.0f);
+            ImGui::PushID(index);
+            ImGui::Button("", ImVec2(20, 20));
+            ImGui::PopID();
+            ImGui::PopStyleVar(2);
+            //ImGui::Button(std::string("KEY" + std::to_string(index)).c_str(), ImVec2(20, 20));
+            ImGui::PopStyleColor();
+        }
+    }
+
+    for (int i = 0; i < 441; i++)
+    {
+        m_ledsData[i].r = ledDataNormalized[i * 3 + 0] * 255;
+        m_ledsData[i].g = ledDataNormalized[i * 3 + 1] * 255;
+        m_ledsData[i].b = ledDataNormalized[i * 3 + 2] * 255;
+    }
+
+
+    ImGui::End();
+
+    /* AUDIO PANEL */
+
+    ImGui::Begin("Audio Panel");
+
+    // Volume Up button
+    if (ImGui::Button("Volume Up"))
+    {
+        ProcessCommand("VOLUMEUP");
+    }
+
+    // Volume Down button
+    if (ImGui::Button("Volume Down"))
+    {
+        ProcessCommand("VOLUMEDOWN");
+    }
+
+    // Mute button
+    if (ImGui::Button("Mute"))
+    {
+        ProcessCommand("MUTE");
+    }
+
+    // Mute button
+    if (ImGui::Button("Play/Pause"))
+    {
+        ProcessCommand("PLAYPAUSE");
+    }
+
     ImGui::End();
 }

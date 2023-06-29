@@ -1,6 +1,7 @@
 x64/
 .vs/
-assets/
+matlab_testing/
+assets/fonts/
 Arduino.vcxproj
 Arduino.sln
 Arduino.vcxproj.filters

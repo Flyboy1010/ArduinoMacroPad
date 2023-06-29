@@ -6,6 +6,14 @@
 #include <vector>
 #include <unordered_map>
 #include <functional>
+#include <cstdint>
+
+extern "C"
+{
+#include <lua.h>
+#include <lualib.h>
+#include <lauxlib.h>
+}
 
 enum ActionType
 {
@@ -23,6 +31,14 @@ struct Action
 
 class ArduinoMacroPadController
 {
+private:
+	// led struct
+
+	struct led_t
+	{
+		uint8_t r, g, b;
+	};
+
 public:
 	ArduinoMacroPadController();
 	~ArduinoMacroPadController();
@@ -30,6 +46,7 @@ public:
 	void ConnectToPort(const std::string& portName, unsigned int baudios);
 	void Disconnect();
 
+	void Update(float delta);
 	void RenderImGui();
 
 private:
@@ -38,6 +55,14 @@ private:
 
 	void ProcessCommand(const std::string& command) const;
 	void CommandListenerProcess();
+
+	// functions that have a lua wrap
+
+	inline void SetLedColor(int index, led_t color) { m_ledsData[index] = color; }
+	static int SetLedColorLuaWrap(lua_State* l);
+
+	inline led_t GetLedColor(int index) const { return m_ledsData[index]; }
+	static int GetLedColorLuaWrap(lua_State* l);
 
 private:
 	unsigned int m_baudios;
@@ -52,4 +77,13 @@ private:
 	// commands & actions
 
 	std::unordered_map<std::string, Action> m_commandsMap;
+
+	// leds of the macro keys
+
+	led_t m_ledsData[441]; // 9 keys
+
+	// lua scripting
+
+	lua_State* m_script;
+	float m_time;
 };

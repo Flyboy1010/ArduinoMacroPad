@@ -67,4 +67,12 @@ void OpenglApplication::SetImGuiTheme()
 	style.TabBorderSize = 1.0f;
 	style.TabRounding = 0.0f;
 	style.WindowRounding = 4.0f;
+
+	style.TabRounding = 4;
+	style.ScrollbarRounding = 9;
+	style.WindowRounding = 7;
+	style.GrabRounding = 3;
+	style.FrameRounding = 3;
+	style.PopupRounding = 4;
+	style.ChildRounding = 4;
 }

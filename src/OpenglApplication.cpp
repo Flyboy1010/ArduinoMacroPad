@@ -47,7 +47,7 @@ bool OpenglApplication::Init(const WindowSpecs& windowSpecs)
 	ImGui::CreateContext();
 	ImGuiIO& io = ImGui::GetIO();
 	io.ConfigFlags |= ImGuiConfigFlags_DockingEnable; // Enable Dockings
-	io.FontDefault = io.Fonts->AddFontFromFileTTF("assets/fonts/roboto-mono.ttf", 24.0f); // set default font
+	io.FontDefault = io.Fonts->AddFontFromFileTTF("assets/fonts/FiraCode-SemiBold.ttf", 23.0f); // set default font
 	ImGui_ImplGlfw_InitForOpenGL((GLFWwindow*)m_window.GetNativeWindowPtr(), true);
 	ImGui_ImplOpenGL3_Init("#version 450");
 
@@ -87,12 +87,12 @@ void OpenglApplication::Update(float delta)
 
 void OpenglApplication::FixedUpdate(float delta)
 {
-
+	m_macroPadController.Update(delta);
 }
 
 void OpenglApplication::Render()
 {	
-	RenderCommand::Clear({ 0.25f, 0.25f, 0.25f, 1.0f });
+	RenderCommand::Clear({ 0.15f, 0.15f, 0.15f, 1.0f });
 }
 
 void OpenglApplication::RenderImGui()
